@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>福岡グルメ35選マップ｜天神・中洲・赤坂</title>
 <meta name="description" content="Google評価と地元人気で選んだ福岡グルメ35店。ジャンル切替つきマップ">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <style>
   :root{ --ink:#222; --sub:#667; --line:#e5e5ea; --bg:#fafafa; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -37,9 +37,9 @@
   .card .bl{ font-size:12px; color:var(--sub); margin-top:3px; line-height:1.5; }
   .gbtn{ flex:0 0 auto; font-size:12px; font-weight:600; color:#1a67c9; border:1px solid #cfe0f5; background:#f4f8ff; border-radius:9px; padding:8px 10px; text-decoration:none; text-align:center; line-height:1.3; }
   footer{ padding:14px 16px 40px; font-size:11.5px; color:var(--sub); line-height:1.7; }
-  .leaflet-popup-content{ font-size:13px; line-height:1.55; margin:10px 12px; }
-  .leaflet-popup-content b{ font-size:13.5px; }
-  .leaflet-popup-content a{ color:#1a67c9; font-weight:600; }
+  .maplibregl-popup-content{ font-size:13px; line-height:1.55; padding:10px 12px; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.18); }
+  .maplibregl-popup-content b{ font-size:13.5px; }
+  .maplibregl-popup-content a{ color:#1a67c9; font-weight:600; }
 </style>
 </head>
 <body>
@@ -53,7 +53,7 @@
   <div class="listwrap" id="list"></div>
   <footer>
     ★はGoogleマップ評価(2026年9月時点・変動します)。魚男・たけとらの★4.9はレビュー投稿施策で膨らんでいる可能性を割り引いて見てください(人気自体は本物)。夜のメイン店(もつ鍋・水炊き・磯ぎよし・かわ屋など)は事前予約推奨、特に週末。<br>
-    Map data © OpenStreetMap contributors, tiles © CARTO
+    Map © OpenStreetMap contributors · OpenMapTiles · OpenFreeMap
   </footer>
 </div>
 <script>
@@ -76,27 +76,41 @@ if (h) {
   if (ks.length) active = new Set(ks);
 }
 
-const map = L.map("map", {scrollWheelZoom:true});
-map.setView([33.5902, 130.4017], 14); // 天神中心の初期表示(サイズ未確定時のフォールバック)
-L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {maxZoom:20, subdomains:"abcd", attribution:"© OpenStreetMap contributors © CARTO"}).addTo(map);
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://tiles.openfreemap.org/styles/liberty",
+  center: [130.4017, 33.5902], // 天神(MapLibreは[lng,lat]順)
+  zoom: 13.6
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}));
+
+function gmapsUrl(s){ return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(s.gq || (s.name + " 福岡")); }
 
 const markers = {};
 for (const s of STORES) {
   if (s.lat == null) continue;
-  const gm = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(s.gq || (s.name + " 福岡"));
-  const mk = L.circleMarker([s.lat, s.lng], {radius:9, color:"#fff", weight:2, fillColor:GENRES[s.genre].color, fillOpacity:.95});
-  mk.bindPopup(`<b>${GENRES[s.genre].emoji} ${s.name}</b><br>★${s.rating.toFixed(1)}（${s.reviews.toLocaleString()}件）・${s.area}<br><a href="${gm}" target="_blank" rel="noopener">Googleマップで開く →</a>`);
-  markers[s.id] = mk;
+  const popup = new maplibregl.Popup({offset: 30, closeButton: false})
+    .setHTML(`<b>${GENRES[s.genre].emoji} ${s.name}</b><br>★${s.rating.toFixed(1)}（${s.reviews.toLocaleString()}件）・${s.area}<br><a href="${gmapsUrl(s)}" target="_blank" rel="noopener">Googleマップで開く →</a>`);
+  const mk = new maplibregl.Marker({color: GENRES[s.genre].color, scale: 0.85})
+    .setLngLat([s.lng, s.lat])
+    .setPopup(popup);
+  markers[s.id] = {mk, on: false};
 }
 
 function visibleStores(){ return STORES.filter(s => active.has(s.genre) && s.lat != null); }
-function fitVisible(){ const vs = visibleStores(); if (vs.length) map.fitBounds(L.latLngBounds(vs.map(s=>[s.lat,s.lng])).pad(0.15), {maxZoom:16}); }
+function fitVisible(){
+  const vs = visibleStores();
+  if (!vs.length) return;
+  const b = new maplibregl.LngLatBounds();
+  vs.forEach(s => b.extend([s.lng, s.lat]));
+  map.fitBounds(b, {padding: 48, maxZoom: 15.8, duration: 400});
+}
 function refresh(fit){
   for (const s of STORES) {
-    const mk = markers[s.id];
-    if (!mk) continue;
-    if (active.has(s.genre)) { if (!map.hasLayer(mk)) mk.addTo(map); }
-    else if (map.hasLayer(mk)) map.removeLayer(mk);
+    const m = markers[s.id];
+    if (!m) continue;
+    if (active.has(s.genre) && !m.on) { m.mk.addTo(map); m.on = true; }
+    else if (!active.has(s.genre) && m.on) { m.mk.remove(); m.on = false; }
   }
   document.querySelectorAll("section.genre").forEach(sec => sec.classList.toggle("hidden", !active.has(sec.dataset.g)));
   document.querySelectorAll(".chip[data-g]").forEach(c => c.classList.toggle("off", !active.has(c.dataset.g)));
@@ -131,16 +145,16 @@ for (const k of ORDER) {
   const items = STORES.filter(s => s.genre === k);
   sec.innerHTML = `<div class="ghead"><span class="dot" style="background:${g.color}"></span>${g.emoji} ${g.label} <span class="cnt">${items.length}店</span></div>`;
   for (const s of items) {
-    const gm = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(s.gq || (s.name + " 福岡"));
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = `<div class="info"><div class="nm">${s.name}</div><div class="meta"><b>★${s.rating.toFixed(1)}</b>（${s.reviews.toLocaleString()}件）・${s.area}</div><div class="bl">${s.blurb}</div></div><a class="gbtn" href="${gm}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google<br>マップ</a>`;
+    card.innerHTML = `<div class="info"><div class="nm">${s.name}</div><div class="meta"><b>★${s.rating.toFixed(1)}</b>（${s.reviews.toLocaleString()}件）・${s.area}</div><div class="bl">${s.blurb}</div></div><a class="gbtn" href="${gmapsUrl(s)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google<br>マップ</a>`;
     card.onclick = () => {
-      const mk = markers[s.id];
-      if (!mk) return;
+      const m = markers[s.id];
+      if (!m) return;
       document.getElementById("map").scrollIntoView({behavior:"smooth", block:"start"});
-      map.setView([s.lat, s.lng], 16.5);
-      mk.openPopup();
+      map.flyTo({center: [s.lng, s.lat], zoom: 16, duration: 600});
+      for (const o of Object.values(markers)) { const p = o.mk.getPopup(); if (p && p.isOpen()) o.mk.togglePopup(); }
+      m.mk.togglePopup();
     };
     sec.appendChild(card);
   }
@@ -148,9 +162,9 @@ for (const k of ORDER) {
 }
 
 refresh(true);
-// 非表示タブ/プリレンダリング中はサイズ0で初期化される。可視化・リサイズの度に補正し、
+// 非表示タブ/プリレンダリング中はサイズ0で初期化されることがある。可視化・リサイズの度に補正し、
 // ズームが広域のままなら表示中の店に再フィットする
-function ensureView(){ map.invalidateSize(); if (map.getZoom() < 10) fitVisible(); }
+function ensureView(){ map.resize(); if (map.getZoom() < 10) fitVisible(); }
 window.addEventListener("load", ensureView);
 window.addEventListener("pageshow", ensureView);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureView(); });
