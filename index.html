@@ -53,7 +53,7 @@
   <div class="listwrap" id="list"></div>
   <footer>
     ★はGoogleマップ評価(2026年9月時点・変動します)。魚男・たけとらの★4.9はレビュー投稿施策で膨らんでいる可能性を割り引いて見てください(人気自体は本物)。夜のメイン店(もつ鍋・水炊き・磯ぎよし・かわ屋など)は事前予約推奨、特に週末。<br>
-    Map data © OpenStreetMap contributors
+    Map data © OpenStreetMap contributors, tiles © CARTO
   </footer>
 </div>
 <script>
@@ -78,7 +78,7 @@ if (h) {
 
 const map = L.map("map", {scrollWheelZoom:true});
 map.setView([33.5902, 130.4017], 14); // 天神中心の初期表示(サイズ未確定時のフォールバック)
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {maxZoom:20, subdomains:"abcd", attribution:"© OpenStreetMap contributors © CARTO"}).addTo(map);
 
 const markers = {};
 for (const s of STORES) {
