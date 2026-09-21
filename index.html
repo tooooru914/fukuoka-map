@@ -76,7 +76,8 @@ if (h) {
   if (ks.length) active = new Set(ks);
 }
 
-const map = L.map("map", {scrollWheelZoom:true, tap:true});
+const map = L.map("map", {scrollWheelZoom:true});
+map.setView([33.5902, 130.4017], 14); // 天神中心の初期表示(サイズ未確定時のフォールバック)
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
 
 const markers = {};
@@ -102,7 +103,7 @@ function refresh(fit){
   history.replaceState(null, "", hs ? "#"+hs : location.pathname + location.search);
   if (fit) {
     const vs = visibleStores();
-    if (vs.length) map.fitBounds(L.latLngBounds(vs.map(s=>[s.lat,s.lng])).pad(0.15));
+    if (vs.length) map.fitBounds(L.latLngBounds(vs.map(s=>[s.lat,s.lng])).pad(0.15), {maxZoom:16});
   }
 }
 
@@ -149,6 +150,9 @@ for (const k of ORDER) {
 }
 
 refresh(true);
+// 非表示タブ等でコンテナサイズ0のまま初期化された場合の再計算
+window.addEventListener("load", () => { map.invalidateSize(); refresh(true); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) map.invalidateSize(); });
 </script>
 </body>
 </html>
