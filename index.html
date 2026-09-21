@@ -90,6 +90,7 @@ for (const s of STORES) {
 }
 
 function visibleStores(){ return STORES.filter(s => active.has(s.genre) && s.lat != null); }
+function fitVisible(){ const vs = visibleStores(); if (vs.length) map.fitBounds(L.latLngBounds(vs.map(s=>[s.lat,s.lng])).pad(0.15), {maxZoom:16}); }
 function refresh(fit){
   for (const s of STORES) {
     const mk = markers[s.id];
@@ -101,10 +102,7 @@ function refresh(fit){
   document.querySelectorAll(".chip[data-g]").forEach(c => c.classList.toggle("off", !active.has(c.dataset.g)));
   const hs = active.size === ORDER.length ? "" : "g=" + [...active].join(",");
   history.replaceState(null, "", hs ? "#"+hs : location.pathname + location.search);
-  if (fit) {
-    const vs = visibleStores();
-    if (vs.length) map.fitBounds(L.latLngBounds(vs.map(s=>[s.lat,s.lng])).pad(0.15), {maxZoom:16});
-  }
+  if (fit) fitVisible();
 }
 
 const chips = document.getElementById("chips");
@@ -150,9 +148,13 @@ for (const k of ORDER) {
 }
 
 refresh(true);
-// 非表示タブ等でコンテナサイズ0のまま初期化された場合の再計算
-window.addEventListener("load", () => { map.invalidateSize(); refresh(true); });
-document.addEventListener("visibilitychange", () => { if (!document.hidden) map.invalidateSize(); });
+// 非表示タブ/プリレンダリング中はサイズ0で初期化される。可視化・リサイズの度に補正し、
+// ズームが広域のままなら表示中の店に再フィットする
+function ensureView(){ map.invalidateSize(); if (map.getZoom() < 10) fitVisible(); }
+window.addEventListener("load", ensureView);
+window.addEventListener("pageshow", ensureView);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureView(); });
+map.on("resize", () => { if (map.getZoom() < 10) fitVisible(); });
 </script>
 </body>
 </html>
