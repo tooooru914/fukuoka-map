@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>福岡グルメ35選マップ｜天神・中洲・赤坂</title>
+<meta name="description" content="Google評価と地元人気で選んだ福岡グルメ35店。ジャンル切替つきマップ">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{ --ink:#222; --sub:#667; --line:#e5e5ea; --bg:#fafafa; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; color:var(--ink); background:var(--bg); }
+  .wrap{ max-width:760px; margin:0 auto; }
+  header{ padding:16px 16px 10px; }
+  h1{ font-size:20px; margin:0 0 4px; }
+  .lead{ font-size:12.5px; color:var(--sub); margin:0; line-height:1.6; }
+  .chips{ display:flex; gap:6px; overflow-x:auto; padding:10px 16px; position:sticky; top:0; background:rgba(250,250,250,.96); backdrop-filter:blur(6px); z-index:1000; border-bottom:1px solid var(--line); scrollbar-width:none; }
+  .chips::-webkit-scrollbar{ display:none; }
+  .chip{ flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; border:1.5px solid var(--line); background:#fff; border-radius:999px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer; user-select:none; transition:all .15s; }
+  .chip .dot{ width:9px; height:9px; border-radius:50%; }
+  .chip.off{ opacity:.38; filter:grayscale(.6); }
+  .chip.all{ font-weight:500; color:var(--sub); }
+  #map{ height:52vh; min-height:320px; z-index:1; }
+  .listwrap{ padding:6px 12px 8px; }
+  section.genre{ margin:14px 0 4px; }
+  section.genre.hidden{ display:none; }
+  .ghead{ display:flex; align-items:center; gap:7px; font-size:15px; font-weight:700; padding:4px 4px 6px; }
+  .ghead .dot{ width:11px; height:11px; border-radius:50%; }
+  .ghead .cnt{ font-size:12px; color:var(--sub); font-weight:500; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:11px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; cursor:pointer; }
+  .card:active{ background:#f2f2f6; }
+  .card .info{ flex:1; min-width:0; }
+  .card .nm{ font-size:14.5px; font-weight:700; line-height:1.35; }
+  .card .meta{ font-size:12.5px; color:var(--sub); margin-top:2px; }
+  .card .meta b{ color:#e0730f; font-weight:700; }
+  .card .bl{ font-size:12px; color:var(--sub); margin-top:3px; line-height:1.5; }
+  .gbtn{ flex:0 0 auto; font-size:12px; font-weight:600; color:#1a67c9; border:1px solid #cfe0f5; background:#f4f8ff; border-radius:9px; padding:8px 10px; text-decoration:none; text-align:center; line-height:1.3; }
+  footer{ padding:14px 16px 40px; font-size:11.5px; color:var(--sub); line-height:1.7; }
+  .leaflet-popup-content{ font-size:13px; line-height:1.55; margin:10px 12px; }
+  .leaflet-popup-content b{ font-size:13.5px; }
+  .leaflet-popup-content a{ color:#1a67c9; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🍽 福岡グルメ35選マップ</h1>
+    <p class="lead">天神・中洲・赤坂エリア。Googleマップ評価×地元人気で選んだ7ジャンル35店。ジャンルをタップで表示/非表示、店をタップで地図へ。</p>
+  </header>
+  <nav class="chips" id="chips" aria-label="ジャンル切替"></nav>
+  <div id="map"></div>
+  <div class="listwrap" id="list"></div>
+  <footer>
+    ★はGoogleマップ評価(2026年9月時点・変動します)。魚男・たけとらの★4.9はレビュー投稿施策で膨らんでいる可能性を割り引いて見てください(人気自体は本物)。夜のメイン店(もつ鍋・水炊き・磯ぎよし・かわ屋など)は事前予約推奨、特に週末。<br>
+    Map data © OpenStreetMap contributors
+  </footer>
+</div>
+<script>
+const GENRES = {
+  motsu:   {label:"もつ鍋",       emoji:"🍲", color:"#d62828"},
+  mizutaki:{label:"水炊き",       emoji:"🐔", color:"#e8850c"},
+  ramen:   {label:"豚骨ラーメン", emoji:"🍜", color:"#a97b0f"},
+  yakitori:{label:"焼き鳥",       emoji:"🍢", color:"#6d4c41"},
+  seafood: {label:"海鮮・ごまさば", emoji:"🐟", color:"#1d6fb8"},
+  gyoza:   {label:"一口餃子",     emoji:"🥟", color:"#2e7d32"},
+  udon:    {label:"博多うどん",   emoji:"🥣", color:"#7b1fa2"}
+};
+const ORDER = ["motsu","mizutaki","ramen","yakitori","seafood","gyoza","udon"];
+const STORES = [{"id": "m1", "genre": "motsu", "name": "元祖もつ鍋 楽天地 西中洲店", "rating": 4.8, "reviews": 12646, "area": "西中洲", "blurb": "創業約50年の元祖系醤油もつ鍋。コスパ抜群で地元の定番", "lat": 33.5897513, "lng": 130.405573, "gq": "元祖もつ鍋楽天地 天神西中洲店 福岡県福岡市中央区春吉3丁目11-14 的野ビル2階"}, {"id": "m2", "genre": "motsu", "name": "もつ鍋 田しゅう 大名本店", "rating": 4.7, "reviews": 2328, "area": "大名", "blurb": "和牛小腸のみ。味噌/醤油/和だし、個室あり。週末は要予約", "lat": 33.5863521, "lng": 130.3947695, "gq": "もつ鍋 田しゅう 福岡大名本店 福岡県福岡市中央区大名1丁目3-6 フラップスビル1F"}, {"id": "m3", "genre": "motsu", "name": "博多もつ鍋 前田屋 大名店", "rating": 4.6, "reviews": 844, "area": "大名", "blurb": "白味噌仕立ての上品系。個室あり", "lat": 33.587385, "lng": 130.394053, "gq": "博多もつ鍋前田屋 大名店 福岡県福岡市中央区大名1丁目12-28"}, {"id": "m4", "genre": "motsu", "name": "博多もつ鍋 やま中 赤坂店", "rating": 4.3, "reviews": 2030, "area": "赤坂", "blurb": "みそもつ鍋の老舗格。上質空間で特別な夜にも", "lat": 33.5875425, "lng": 130.3908465, "gq": "博多もつ鍋 やま中 赤坂店 福岡県福岡市中央区赤坂1丁目9-1 サニー赤坂店2F"}, {"id": "m5", "genre": "motsu", "name": "もつ幸", "rating": 4.2, "reviews": 1114, "area": "呉服町", "blurb": "酢醤油ダレで食べる独自スタイル。地元通が推す老舗", "lat": 33.5983348, "lng": 130.4083589, "gq": "もつ幸 福岡県福岡市博多区綱場町7-14"}, {"id": "z2", "genre": "mizutaki", "name": "水炊き 積 大名店", "rating": 4.5, "reviews": 231, "area": "大名", "blurb": "有田鶏の丸鶏スープの隠れ家。4人は必ず予約", "lat": 33.5869177, "lng": 130.3929761, "gq": "水炊き積 大名店 福岡県福岡市中央区大名1丁目10-16"}, {"id": "z1", "genre": "mizutaki", "name": "博多水炊き とり田 博多本店", "rating": 4.4, "reviews": 1900, "area": "下川端", "blurb": "現代の博多水炊き代表格。コース中心・要予約", "lat": 33.5960356, "lng": 130.4058933, "gq": "博多水炊きとり田 博多本店 福岡県福岡市博多区下川端町10-5 1F"}, {"id": "z3", "genre": "mizutaki", "name": "水たき長野", "rating": 4.2, "reviews": 1851, "area": "対馬小路", "blurb": "創業90年超・澄んだスープの名店。数日前の予約推奨", "lat": 33.5991027, "lng": 130.4029331, "gq": "水たき長野 福岡県福岡市博多区対馬小路1-6"}, {"id": "z4", "genre": "mizutaki", "name": "博多水たき いろは 本店", "rating": 4.2, "reviews": 1097, "area": "上川端", "blurb": "川端通りの老舗。観光動線で使いやすい", "lat": 33.5954446, "lng": 130.4081307, "gq": "博多味処水炊き いろは本店 福岡県福岡市博多区上川端町14-27 いろはビル"}, {"id": "z5", "genre": "mizutaki", "name": "新三浦 天神店", "rating": 4.1, "reviews": 770, "area": "天神", "blurb": "明治43年創業。10時間炊く白濁スープ、個室2〜6名", "lat": 33.5916303, "lng": 130.3984631, "gq": "新三浦 天神店 福岡県福岡市中央区天神2丁目12-1 天神ビルB1F"}, {"id": "r1", "genre": "ramen", "name": "博多らーめん ShinShin 天神本店", "rating": 4.3, "reviews": 7874, "area": "天神", "blurb": "あっさり細麺の代表格。翌3時まで、締めに最適", "lat": 33.5927497, "lng": 130.3968446, "gq": "博多らーめんShinShin 天神本店 福岡県福岡市中央区天神3丁目2-19"}, {"id": "r2", "genre": "ramen", "name": "らーめん海鳴 中洲店", "rating": 4.2, "reviews": 1633, "area": "中洲", "blurb": "魚介豚骨の地元人気店。深夜営業で飲み後に強い", "lat": 33.5932867, "lng": 130.4075275, "gq": "ラーメン海鳴 中洲店 福岡県福岡市博多区中洲3丁目6-23 和田ビル"}, {"id": "r3", "genre": "ramen", "name": "元祖赤のれん 節ちゃんラーメン 本店", "rating": 4.1, "reviews": 2783, "area": "大名", "blurb": "昭和21年創業・博多ラーメン源流の平打ち細麺。24時まで", "lat": 33.5891821, "lng": 130.3957931, "gq": "元祖赤のれん節ちゃんラーメン 本店 福岡県福岡市中央区大名2丁目6-4 プラスゲート天神1F"}, {"id": "r4", "genre": "ramen", "name": "大砲ラーメン 天神今泉店", "rating": 4.0, "reviews": 2768, "area": "今泉", "blurb": "久留米「呼び戻し」の濃厚系。22時までなので夕方向き", "lat": 33.5872383, "lng": 130.4003656, "gq": "大砲ラーメン 天神今泉店 福岡県福岡市中央区今泉1丁目23-8"}, {"id": "r5", "genre": "ramen", "name": "秀ちゃんラーメン", "rating": 3.9, "reviews": 565, "area": "警固", "blurb": "濃厚こってり派ならここ。地元定番", "lat": 33.5843142, "lng": 130.3914784, "gq": "秀ちゃんラーメン とんぼ店 福岡県福岡市中央区警固2丁目13-11"}, {"id": "y1", "genre": "yakitori", "name": "とりかわ博多 かわっこ 大名本店", "rating": 4.6, "reviews": 759, "area": "大名", "blurb": "とりかわ×厚切り豚バラの2枚看板", "lat": 33.5868782, "lng": 130.3926174, "gq": "とりかわ博多かわっこ 福岡大名店 福岡県福岡市中央区大名1丁目8-35 OSビル1F"}, {"id": "y2", "genre": "yakitori", "name": "博多焼鳥 ぐう(旧・とりかわ焼 隅)", "rating": 4.5, "reviews": 635, "area": "今泉", "blurb": "1週間仕込みのとりかわ+野菜巻き串", "lat": 33.5833112, "lng": 130.3963625, "gq": "博多焼鳥ぐう 福岡県福岡市中央区今泉2丁目3-23 ARTK'S上人橋通り1F"}, {"id": "y3", "genre": "yakitori", "name": "藤よし", "rating": 4.3, "reviews": 709, "area": "西中洲", "blurb": "福岡の「焼き鳥=豚バラ」文化を体感できる老舗", "lat": 33.5906066, "lng": 130.4044107, "gq": "藤よし 福岡県福岡市中央区西中洲9-6"}, {"id": "y4", "genre": "yakitori", "name": "焼とりの八兵衛 上人橋通り店", "rating": 4.1, "reviews": 376, "area": "今泉", "blurb": "スタイリッシュ系人気店。グループで入りやすい", "lat": 33.5834758, "lng": 130.3960864, "gq": "焼とりの八兵衛 上人橋通り店 福岡県福岡市中央区警固1丁目4-27"}, {"id": "y5", "genre": "yakitori", "name": "かわ屋 警固店", "rating": 4.0, "reviews": 929, "area": "警固", "blurb": "ぐるぐる巻きとりかわの名物店。電話予約必須", "lat": 33.5835097, "lng": 130.3896631, "gq": "かわ屋 警固店 福岡県福岡市中央区警固2丁目16-10 吉武ビル"}, {"id": "s1", "genre": "seafood", "name": "博多炉端 魚男", "rating": 4.9, "reviews": 10340, "area": "今泉", "blurb": "創作炉端×海鮮の行列店(★は投稿施策込みの可能性あり)", "lat": 33.5843858, "lng": 130.3995851, "gq": "博多炉端 魚男（フィッシュマン） 福岡県福岡市中央区今泉1丁目4-23"}, {"id": "s2", "genre": "seafood", "name": "博多ごまさば屋", "rating": 4.4, "reviews": 2421, "area": "赤坂", "blurb": "ごまさば専門の食券定食。昼利用向き", "lat": 33.5909686, "lng": 130.3930237, "gq": "ごまさば屋 福岡県福岡市中央区舞鶴1丁目2-11 オガワビル1F"}, {"id": "s3", "genre": "seafood", "name": "磯ぎよし 天神店", "rating": 4.2, "reviews": 453, "area": "舞鶴", "blurb": "玄界灘の魚が揃う地元の名物居酒屋。要予約", "lat": 33.5922769, "lng": 130.394411, "gq": "博多磯ぎよし 天神店 福岡県福岡市中央区舞鶴1丁目9-23 エステート・モア舞鶴1階"}, {"id": "s4", "genre": "seafood", "name": "魚菜肴処 幸陽丸", "rating": 4.2, "reviews": 114, "area": "中洲川端", "blurb": "ごま鯖+松浦あじフライ。個室・宴会コースあり", "lat": 33.5935797, "lng": 130.4038291, "gq": "幸陽丸 福岡県福岡市博多区中洲5丁目4-6 リバーフェイス博多2階"}, {"id": "s5", "genre": "seafood", "name": "河太郎 中洲本店", "rating": 4.1, "reviews": 1986, "area": "中洲", "blurb": "イカ活造り発祥の店。予約推奨", "lat": 33.5900659, "lng": 130.4093753, "gq": "河太郎 中洲本店 福岡県福岡市博多区中洲1丁目6-6"}, {"id": "g1", "genre": "gyoza", "name": "博多一口餃子 たけとら 今泉店", "rating": 4.9, "reviews": 4130, "area": "今泉", "blurb": "皮から手作りの一口餃子。翌5時まで(★は投稿施策込みの可能性あり)", "lat": 33.5868272, "lng": 130.4009272, "gq": "博多一口餃子 たけとら 今泉店 福岡県福岡市中央区今泉1丁目12-8"}, {"id": "g2", "genre": "gyoza", "name": "博多一口餃子 アッカン", "rating": 4.3, "reviews": 110, "area": "大名", "blurb": "ブランド豚のもちもち一口餃子。翌4時まで", "lat": 33.585308, "lng": 130.3919622, "gq": "博多一口餃子アッカン警固本店 福岡県福岡市中央区大名1丁目5-5 101"}, {"id": "g3", "genre": "gyoza", "name": "餃子屋 弐ノ弐 今泉店", "rating": 4.2, "reviews": 328, "area": "今泉", "blurb": "安うま餃子居酒屋の地元定番", "lat": 33.585318, "lng": 130.3957385, "gq": "餃子屋弐ノ弐 今泉店 福岡県福岡市中央区今泉2丁目4-33 1F"}, {"id": "g5", "genre": "gyoza", "name": "テムジン 大名店", "rating": 4.0, "reviews": 711, "area": "大名", "blurb": "1963年創業。牛肉あっさり系一口餃子", "lat": 33.5869584, "lng": 130.3951487, "gq": "テムジン 大名店 福岡県福岡市中央区大名1丁目11-2"}, {"id": "g4", "genre": "gyoza", "name": "宝雲亭 中洲本店", "rating": 4.0, "reviews": 595, "area": "中洲", "blurb": "博多一口餃子の発祥店", "lat": 33.5917268, "lng": 130.4076344, "gq": "宝雲亭 中洲本店 福岡県福岡市博多区中洲2丁目4-20 第21ポールスタービル"}, {"id": "u2", "genre": "udon", "name": "みやけうどん", "rating": 4.1, "reviews": 1087, "area": "呉服町", "blurb": "極やわ麺の\"ザ・博多うどん\"原型。昼〜夕方のみ", "lat": 33.5983532, "lng": 130.4106935, "gq": "みやけうどん 福岡県福岡市博多区上呉服町10-24"}, {"id": "u1", "genre": "udon", "name": "釜喜利うどん", "rating": 4.1, "reviews": 1081, "area": "大名", "blurb": "夜はおでんと酒も。「飲めるうどん屋」", "lat": 33.5858214, "lng": 130.3915615, "gq": "釜喜利うどん 福岡県福岡市中央区大名1丁目7-8 F,Corazón大名"}, {"id": "u3", "genre": "udon", "name": "博多やりうどん 福岡店", "rating": 4.0, "reviews": 829, "area": "天神", "blurb": "30cm超の槍ごぼ天が名物", "lat": 33.5904527, "lng": 130.398931, "gq": "博多やりうどん 福岡店 福岡県福岡市中央区天神2丁目11-2-2 ソラリアステージ2F"}, {"id": "u4", "genre": "udon", "name": "かろのうろん", "rating": 3.8, "reviews": 1611, "area": "上川端", "blurb": "明治15年創業・博多最古級。17時頃売切仕舞い", "lat": 33.5924306, "lng": 130.4110349, "gq": "かろのうろん 福岡県福岡市博多区上川端町2-1"}, {"id": "u5", "genre": "udon", "name": "因幡うどん ソラリアステージ店", "rating": 3.7, "reviews": 558, "area": "天神", "blurb": "地元の日常使い定番。サッと入れる", "lat": 33.59032, "lng": 130.3988472, "gq": "因幡うどん ソラリアステージ店 福岡県福岡市中央区天神2丁目11-3 SOLARIA STAGE専門店街B2F"}];
+
+let active = new Set(ORDER);
+const h = location.hash.match(/g=([a-z,]+)/);
+if (h) {
+  const ks = h[1].split(",").filter(k => GENRES[k]);
+  if (ks.length) active = new Set(ks);
+}
+
+const map = L.map("map", {scrollWheelZoom:true, tap:true});
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
+
+const markers = {};
+for (const s of STORES) {
+  if (s.lat == null) continue;
+  const gm = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(s.gq || (s.name + " 福岡"));
+  const mk = L.circleMarker([s.lat, s.lng], {radius:9, color:"#fff", weight:2, fillColor:GENRES[s.genre].color, fillOpacity:.95});
+  mk.bindPopup(`<b>${GENRES[s.genre].emoji} ${s.name}</b><br>★${s.rating.toFixed(1)}（${s.reviews.toLocaleString()}件）・${s.area}<br><a href="${gm}" target="_blank" rel="noopener">Googleマップで開く →</a>`);
+  markers[s.id] = mk;
+}
+
+function visibleStores(){ return STORES.filter(s => active.has(s.genre) && s.lat != null); }
+function refresh(fit){
+  for (const s of STORES) {
+    const mk = markers[s.id];
+    if (!mk) continue;
+    if (active.has(s.genre)) { if (!map.hasLayer(mk)) mk.addTo(map); }
+    else if (map.hasLayer(mk)) map.removeLayer(mk);
+  }
+  document.querySelectorAll("section.genre").forEach(sec => sec.classList.toggle("hidden", !active.has(sec.dataset.g)));
+  document.querySelectorAll(".chip[data-g]").forEach(c => c.classList.toggle("off", !active.has(c.dataset.g)));
+  const hs = active.size === ORDER.length ? "" : "g=" + [...active].join(",");
+  history.replaceState(null, "", hs ? "#"+hs : location.pathname + location.search);
+  if (fit) {
+    const vs = visibleStores();
+    if (vs.length) map.fitBounds(L.latLngBounds(vs.map(s=>[s.lat,s.lng])).pad(0.15));
+  }
+}
+
+const chips = document.getElementById("chips");
+for (const k of ORDER) {
+  const g = GENRES[k];
+  const c = document.createElement("button");
+  c.className = "chip"; c.dataset.g = k;
+  c.innerHTML = `<span class="dot" style="background:${g.color}"></span>${g.emoji} ${g.label}`;
+  c.onclick = () => {
+    if (active.has(k) && active.size === 1) return;
+    active.has(k) ? active.delete(k) : active.add(k);
+    refresh(true);
+  };
+  chips.appendChild(c);
+}
+const allBtn = document.createElement("button");
+allBtn.className = "chip all"; allBtn.textContent = "全表示";
+allBtn.onclick = () => { active = new Set(ORDER); refresh(true); };
+chips.appendChild(allBtn);
+
+const list = document.getElementById("list");
+for (const k of ORDER) {
+  const g = GENRES[k];
+  const sec = document.createElement("section");
+  sec.className = "genre"; sec.dataset.g = k;
+  const items = STORES.filter(s => s.genre === k);
+  sec.innerHTML = `<div class="ghead"><span class="dot" style="background:${g.color}"></span>${g.emoji} ${g.label} <span class="cnt">${items.length}店</span></div>`;
+  for (const s of items) {
+    const gm = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(s.gq || (s.name + " 福岡"));
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<div class="info"><div class="nm">${s.name}</div><div class="meta"><b>★${s.rating.toFixed(1)}</b>（${s.reviews.toLocaleString()}件）・${s.area}</div><div class="bl">${s.blurb}</div></div><a class="gbtn" href="${gm}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google<br>マップ</a>`;
+    card.onclick = () => {
+      const mk = markers[s.id];
+      if (!mk) return;
+      document.getElementById("map").scrollIntoView({behavior:"smooth", block:"start"});
+      map.setView([s.lat, s.lng], 16.5);
+      mk.openPopup();
+    };
+    sec.appendChild(card);
+  }
+  list.appendChild(sec);
+}
+
+refresh(true);
+</script>
+</body>
+</html>
