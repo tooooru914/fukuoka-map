@@ -168,7 +168,9 @@ function ensureView(){ map.resize(); if (map.getZoom() < 10) fitVisible(); }
 window.addEventListener("load", ensureView);
 window.addEventListener("pageshow", ensureView);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureView(); });
-map.on("resize", () => { if (map.getZoom() < 10) fitVisible(); });
+map.once("load", () => { map.resize(); fitVisible(); });
+// 埋め込みブラウザ等でコンテナ幅が後から変わってもキャンバスを追従させる
+new ResizeObserver(() => map.resize()).observe(document.getElementById("map"));
 </script>
 </body>
 </html>
