@@ -98,14 +98,15 @@ for (const s of STORES) {
 }
 
 function visibleStores(){ return STORES.filter(s => active.has(s.genre) && s.lat != null); }
-function fitVisible(){
+function fitVisible(animate){
   const vs = visibleStores();
   if (!vs.length) return;
   const b = new maplibregl.LngLatBounds();
   vs.forEach(s => b.extend([s.lng, s.lat]));
-  map.fitBounds(b, {padding: 48, maxZoom: 15.8, duration: 400});
+  // 初期表示はrAF停止環境でも確実に反映されるよう非アニメで実行
+  map.fitBounds(b, {padding: 48, maxZoom: 15.8, duration: animate ? 400 : 0});
 }
-function refresh(fit){
+function refresh(fit, animate){
   for (const s of STORES) {
     const m = markers[s.id];
     if (!m) continue;
@@ -116,7 +117,7 @@ function refresh(fit){
   document.querySelectorAll(".chip[data-g]").forEach(c => c.classList.toggle("off", !active.has(c.dataset.g)));
   const hs = active.size === ORDER.length ? "" : "g=" + [...active].join(",");
   history.replaceState(null, "", hs ? "#"+hs : location.pathname + location.search);
-  if (fit) fitVisible();
+  if (fit) fitVisible(animate);
 }
 
 const chips = document.getElementById("chips");
@@ -128,13 +129,13 @@ for (const k of ORDER) {
   c.onclick = () => {
     if (active.has(k) && active.size === 1) return;
     active.has(k) ? active.delete(k) : active.add(k);
-    refresh(true);
+    refresh(true, true);
   };
   chips.appendChild(c);
 }
 const allBtn = document.createElement("button");
 allBtn.className = "chip all"; allBtn.textContent = "全表示";
-allBtn.onclick = () => { active = new Set(ORDER); refresh(true); };
+allBtn.onclick = () => { active = new Set(ORDER); refresh(true, true); };
 chips.appendChild(allBtn);
 
 const list = document.getElementById("list");
@@ -168,7 +169,10 @@ function ensureView(){ map.resize(); if (map.getZoom() < 10) fitVisible(); }
 window.addEventListener("load", ensureView);
 window.addEventListener("pageshow", ensureView);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) ensureView(); });
-map.once("load", () => { map.resize(); fitVisible(); });
+map.once("load", () => { map.resize(); fitVisible(false); });
+// 埋め込みブラウザでrAFが止まり初期フレームのまま固まる対策: 描画完了まで再描画を蹴る(自己終了)
+const kick = setInterval(() => { if (map.loaded()) clearInterval(kick); else { map.resize(); map.triggerRepaint(); } }, 300);
+setTimeout(() => clearInterval(kick), 15000);
 // 埋め込みブラウザ等でコンテナ幅が後から変わってもキャンバスを追従させる
 new ResizeObserver(() => map.resize()).observe(document.getElementById("map"));
 </script>
